@@ -4,6 +4,7 @@ import {
   ExtensionContext,
   workspace,
   Uri,
+  ConfigurationTarget,
   languages,
 } from "vscode";
 import {
@@ -11,6 +12,8 @@ import {
   BoardTitle,
   ThreadTitle,
   AccountTitle,
+  FavoriteTitle,
+  TopTreeItem,
 } from "../threads/ForumTitle";
 import { loginPrompt, logout, login } from "./auth";
 import { CookieJar } from "tough-cookie";
@@ -53,7 +56,7 @@ const registerForum = (
         !window.tabGroups.activeTabGroup.activeTab ||
         (window.activeTextEditor &&
           currentThread?.threadUri.toString() !==
-            window.activeTextEditor.document.uri.toString())
+          window.activeTextEditor.document.uri.toString())
       ) {
         return undefined;
       }
@@ -96,10 +99,10 @@ const registerForum = (
   subscriptions.push(
     commands.registerCommand(
       "opens1.updateview",
-      (board: BoardTitle | AccountTitle) => {
+      (board: TopTreeItem) => {
         if (board instanceof BoardTitle) {
           forumProvider.turnBoardPage(board, 1);
-        } else if (board instanceof AccountTitle) {
+        } else if ((board instanceof AccountTitle) || (board instanceof FavoriteTitle)) {
           forumProvider.updateView(board);
         }
       }
@@ -111,10 +114,10 @@ const registerForum = (
       const conf = workspace.getConfiguration("opens1");
       const hiddenBoards = conf.get<string[]>("hiddenBoards");
       if (!hiddenBoards) {
-        await conf.update("hiddenBoards", [board.title]);
+        await conf.update("hiddenBoards", [board.title], ConfigurationTarget.Global);
       } else {
         hiddenBoards.push(board.title);
-        await conf.update("hiddenBoards", hiddenBoards);
+        await conf.update("hiddenBoards", hiddenBoards, ConfigurationTarget.Global);
       }
       forumProvider.refresh();
       window.showInformationMessage(
@@ -122,6 +125,35 @@ const registerForum = (
       );
     })
   );
+
+  subscriptions.push(
+    commands.registerCommand("opens1.favorite", async (thread: ThreadTitle) => {
+      const conf = workspace.getConfiguration("opens1");
+      const favorites = conf.get<string[]>("favorites");
+      const uri = thread.threadUri.toString();
+      if (!favorites) {
+        await conf.update("favorites", [thread.threadUri.toString()], ConfigurationTarget.Global);
+      } else {
+        var pos = favorites.indexOf(uri)
+        if (pos > -1) {
+          favorites.splice(pos, 1);
+          await conf.update("favorites", favorites, ConfigurationTarget.Global);
+          window.showInformationMessage(
+            `Removed ${thread.title} to Favorites. Go to extension setting page to unhide them if you wish.`
+          );
+        } else {
+          favorites.push(thread.threadUri.toString());
+          await conf.update("favorites", favorites, ConfigurationTarget.Global);
+          window.showInformationMessage(
+            `Added ${thread.title} to Favorites. Go to extension setting page to unhide them if you wish.`
+          );
+        }
+      }
+      forumProvider.refresh();
+
+    })
+  );
+
   subscriptions.push(
     commands.registerCommand("opens1.nextboardpage", (board: BoardTitle) => {
       forumProvider.turnBoardPage(board, board.page + 1);

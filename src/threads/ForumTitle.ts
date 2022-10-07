@@ -17,21 +17,21 @@ import { checkAuth } from "../libs/auth";
 
 export class ForumTitleProvider
   implements
-    TreeDataProvider<ThreadTitle | BoardTitle | AccountTitle | OnlineUser>
+  TreeDataProvider<StageOneTreeItem>
 {
   private _onDidChangeTreeData: EventEmitter<
-    ThreadTitle | BoardTitle | AccountTitle | OnlineUser | undefined | void
+    StageOneTreeItem | undefined | void
   > = new EventEmitter<
-    ThreadTitle | BoardTitle | AccountTitle | OnlineUser | undefined | void
+    StageOneTreeItem | undefined | void
   >();
 
   readonly onDidChangeTreeData: Event<
-    ThreadTitle | BoardTitle | AccountTitle | OnlineUser | undefined | void
+    StageOneTreeItem | undefined | void
   > = this._onDidChangeTreeData.event;
 
   public accounts: AccountTitle | undefined;
 
-  constructor(private cookieJar: CookieJar, public credential: Credential) {}
+  constructor(private cookieJar: CookieJar, public credential: Credential) { }
 
   public opens1Users: Set<string> = new Set();
 
@@ -40,20 +40,20 @@ export class ForumTitleProvider
   }
 
   updateView(
-    element: BoardTitle | ThreadTitle | AccountTitle | OnlineUser
+    element: StageOneTreeItem
   ): void {
     this._onDidChangeTreeData.fire(element);
   }
 
   getTreeItem(
-    element: ThreadTitle | BoardTitle | AccountTitle | OnlineUser
+    element: StageOneTreeItem
   ): TreeItem | Thenable<TreeItem> {
     return element;
   }
 
   getChildren(
-    element?: ThreadTitle | BoardTitle | AccountTitle | OnlineUser | undefined
-  ): ProviderResult<(ThreadTitle | BoardTitle | AccountTitle | OnlineUser)[]> {
+    element?: StageOneTreeItem | undefined
+  ): ProviderResult<(StageOneTreeItem)[]> {
     if (element && element instanceof BoardTitle) {
       return this.getForumEntries(element);
     } else if (
@@ -74,19 +74,24 @@ export class ForumTitleProvider
             )
         )
       );
+    } else if (element && element instanceof FavoriteTitle) {
+      const conf = workspace.getConfiguration("opens1");
+      const favorites = conf.get<string[]>("favorites");
     } else {
-      return checkAuth(this.cookieJar).then((auth) => {
-        return auth
-          ? this.getForumEntries().then((boardTitles) => {
-              this.accounts = new AccountTitle(
-                "OpenS1用户",
-                // `OpenS1用户(${this.opens1Users.size}人)`,
-                TreeItemCollapsibleState.Collapsed
-              );
-              const titles = [...boardTitles, this.accounts];
-              return titles;
-            })
-          : this.getForumEntries();
+      return this.getForumEntries().then((boardTitles) => {
+        const favorites = new FavoriteTitle(TreeItemCollapsibleState.Collapsed);
+        var titles: StageOneTreeItem[] = [...boardTitles, favorites];
+        return checkAuth(this.cookieJar).then((auth) => {
+          if (auth) {
+            this.accounts = new AccountTitle(
+              "OpenS1用户",
+              // `OpenS1用户(${this.opens1Users.size}人)`,
+              TreeItemCollapsibleState.Collapsed
+            );
+            titles = [...titles, this.accounts];
+          }
+          return titles;
+        });
       });
     }
   }
@@ -162,8 +167,8 @@ export class ForumTitleProvider
         element.pagination === 1
           ? `threadp0`
           : page >= element.pagination
-          ? `threadpend`
-          : `threadp${page}`;
+            ? `threadpend`
+            : `threadp${page}`;
       element.threadUri = Uri.parse(
         `s1:${element.path.slice(4, -5)}-${page}.${element.ext}`
       );
@@ -172,7 +177,25 @@ export class ForumTitleProvider
   }
 }
 
-export class ThreadTitle extends TreeItem {
+class StageOneTreeItem extends TreeItem {
+  constructor(
+    public readonly title: string,
+    public readonly collapsibleState: TreeItemCollapsibleState
+  ) {
+    super(title, collapsibleState);
+  }
+}
+
+export class TopTreeItem extends TreeItem {
+  constructor(
+    public readonly title: string,
+    public readonly collapsibleState: TreeItemCollapsibleState
+  ) {
+    super(title, collapsibleState);
+  }
+}
+
+export class ThreadTitle extends StageOneTreeItem {
   constructor(
     public readonly title: string,
     public readonly path: string,
@@ -188,8 +211,8 @@ export class ThreadTitle extends TreeItem {
       this.pagination === 1
         ? `threadp0`
         : this.page >= this.pagination
-        ? `threadpend`
-        : `threadp${this.page}`;
+          ? `threadpend`
+          : `threadp${this.page}`;
     this.command = {
       title: "Show Thread",
       command: "opens1.showthread",
@@ -210,12 +233,12 @@ export class ThreadTitle extends TreeItem {
     this.displayStyle === "markdown"
       ? "md"
       : this.displayStyle === "typescript"
-      ? "ts"
-      : this.displayStyle === "python"
-      ? "py"
-      : this.displayStyle === "cpp"
-      ? "cc"
-      : "md";
+        ? "ts"
+        : this.displayStyle === "python"
+          ? "py"
+          : this.displayStyle === "cpp"
+            ? "cc"
+            : "md";
 
   public threadUri: Uri = Uri.parse(
     `s1:${this.path.slice(4, -5)}-${this.page}.${this.ext}`
@@ -224,7 +247,7 @@ export class ThreadTitle extends TreeItem {
   public readonly tid: number = Number(this.path.slice(4, -5));
 }
 
-export class BoardTitle extends TreeItem {
+export class BoardTitle extends TopTreeItem {
   constructor(
     public readonly title: string,
     public readonly path: string,
@@ -248,7 +271,17 @@ export class BoardTitle extends TreeItem {
   public readonly fid: number = Number(this.path.slice(4, -5));
 }
 
-export class AccountTitle extends TreeItem {
+export class FavoriteTitle extends TopTreeItem {
+  constructor(
+    public readonly collapsibleState: TreeItemCollapsibleState
+  ) {
+    super("收藏", collapsibleState);
+  }
+
+  iconPath = new ThemeIcon("star");
+}
+
+export class AccountTitle extends TopTreeItem {
   constructor(
     public readonly title: string,
     public readonly collapsibleState: TreeItemCollapsibleState
@@ -260,7 +293,7 @@ export class AccountTitle extends TreeItem {
   iconPath = new ThemeIcon("account");
 }
 
-export class OnlineUser extends TreeItem {
+export class OnlineUser extends StageOneTreeItem {
   constructor(
     public readonly username: string,
     public readonly isMe: boolean,
